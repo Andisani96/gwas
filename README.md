@@ -1,4 +1,4 @@
-# next-gwas
+# gwas
 
 The main objective of this project is to develop a parallel distributed computational pipeline that uses maxT permutation testing to determine which genomic variants are implicated in a disease.
 
