@@ -22,7 +22,7 @@ We particularly recommend installing them in a directory accesible by your by yo
 To install the next-gwas project, clone this git repository
 
 ```bash
-git clone https://github.com/tino-sibanda/next-gwas.git
+git clone https://github.com/Andisani96/gwas.git
 cd next-gwas/
 ```
 
