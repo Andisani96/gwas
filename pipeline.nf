@@ -1,9 +1,11 @@
+//importing the data 
 Channel
     .fromFilePairs("${params.input_dir}/raw/*.{bed,fam,bim}",size:3)
     .ifEmpty {error "No files in  ${params.input_dir}."}
     .filter  {key, filename  -> key in params.input_pat}
     .into {bfile_ch1; bfile_ch2; bfile_ch3}
 
+//Configuring the memory,cpu and getting the snp's list in this process
 process list_snps{
 
     cpus 2 
@@ -39,7 +41,7 @@ snpfile_ch
     .transpose()
     .into {snplist_ch1; snplist_ch2}
 
-
+//getting chi-square per snp
 process chi2_per_snp{
     echo true
     publishDir "${params.output_dir}/assoc/",
@@ -68,6 +70,7 @@ process chi2_per_snp{
 
 }
 
+//calculating the max-t 
 process maxT_per_snp{
 
     echo true
