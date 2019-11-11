@@ -1,20 +1,13 @@
-//importing the data 
 Channel
     .fromFilePairs("${params.input_dir}/raw/*.{bed,fam,bim}",size:3)
     .ifEmpty {error "No files in  ${params.input_dir}."}
     .filter  {key, filename  -> key in params.input_pat}
-    .into {bfile_ch1; bfile_ch2; bfile_ch3}
+    .into {bfile_ch1; bfile_ch2}
 
-//Configuring the memory,cpu and getting the snp's list in this process
-process list_snps{
+process make_snpblocks{
 
-    cpus 2 
-    memory "4GB"
-    maxForks 10
-
-    echo true
-    publishDir "${params.output_dir}/snplist/",
-                pattern:"*.snplist",
+    publishDir "${params.output_dir}/snpblocks/",
+                pattern:"*.var.ranges",
                 overwrite:true,
                 mode:'copy'
 
@@ -23,79 +16,72 @@ process list_snps{
      set bfile, file(bfileNames) from bfile_ch1
 
     output:
-    file("*.snplist") into snpfile_ch
+    file("*.var.ranges") into snpblock_files_ch
 
     script:
     """
-    plink --noweb --bfile ${bfile} --silent --write-snplist --out ${bfile}
+    plink --bfile ${bfile} --write-var-ranges ${params.nblocks} --out ${bfile}
     """
 
 }
 
-snpfile_ch
+
+snpblock_files_ch
     .map{file ->
             def key  = file.name.tokenize(".").get(0)
-            def snps = file.splitText()
+            def snps = file.splitCsv(header:true, sep: "\t")
             return tuple(key, snps)
     }
     .transpose()
-    .into {snplist_ch1; snplist_ch2}
+    .set{snpblocks_ch}
 
-//getting chi-square per snp
-process chi2_per_snp{
-    echo true
-    publishDir "${params.output_dir}/assoc/",
-                pattern: "*.assoc",
-                overwrite:true,
-                mode:"copy"
 
-    cpus 3
-    memory "6GB"
-    maxForks 5
-
+process compute_maxT{
+   
     input:
-        each snp from snplist_ch1
-        tuple bfile, file(bfileNames) from bfile_ch2
+        each snp from snpblocks_ch
+        tuple bfile, file(bfileList) from bfile_ch2
 
     output:
-        file("*.assoc") into snp_chi2_ch
+        file("*.assoc.mperm") into maxTfile_ch
+        file("*.assoc") into assocfile_ch
 
     when:
         snp[0]==bfile
 
     script:
     """
-    plink --noweb --bfile ${bfile} --assoc --out ${bfile}-\$( echo '${snp[1]}'| cut -d':' -f 2) --silent --snp ${snp[1]}
+    plink --bfile ${bfile} --assoc mperm=${params.mperm} --seed 567489 --mperm-save --out ${bfile} --snps ${snp[1].FIRST}-${snp[1].LAST}
     """
-
 }
 
-//calculating the max-t 
-process maxT_per_snp{
+
+maxTfile_ch
+    .collectFile(keepHeader:true, storeDir:"${params.output_dir}/data")
+    .set{maxT_ch}
+
+assocfile_ch
+    .collectFile(keepHeader:true, storeDir:"${params.output_dir}/data")
+    .set{assoc_ch}
+
+
+process plot_graphs{
 
     echo true
-    publishDir "${params.output_dir}/maxT/",
-                pattern:"*.mperm.*",
-                overwrite: true,
-                mode:'copy'
-
-    cpus 3
-    memory "6GB"
-    maxForks 10
+    publishDir "${params.output_dir}/",
+                 pattern:"*.png",
+                 overwrite:true,
+                 mode:'copy' 
 
     input:
-        each snp from snplist_ch2
-        tuple bfile, file(bfileList) from bfile_ch3
+        file(assoc) from assoc_ch
+        file(maxT) from maxT_ch
 
     output:
-        file("*.mperm.*") into snp_maxT_ch
-
-    when:
-        snp[0]==bfile
-
+        file("*.png")
     script:
     """
-    plink --noweb --bfile ${bfile} --assoc --mperm ${params.mperm} --mperm-save --out ${bfile}-\$( echo '${snp[1]}'|cut -d':' -f 2) --silent --snp ${snp[1]}
+    python3 ${params.script_dir}/graphs.py --assoc ${assoc} --maxT ${maxT}
     """
-}
+} 
 
